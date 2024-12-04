@@ -1,0 +1,42 @@
+apiVersion: batch/v1
+kind: CronJob
+metadata:
+  name: delete-old-pipelineruns
+spec:
+  schedule: "0 0 * * *" # Runs daily at midnight
+  successfulJobsHistoryLimit: 3
+  failedJobsHistoryLimit: 3
+  jobTemplate:
+    spec:
+      template:
+        spec:
+          containers:
+          - name: delete-old-pipelineruns
+            image: quay.io/openshift/origin-cli:4.1
+            command:
+            - /bin/bash
+            - -c
+            - |
+              set -e
+              echo "Deleting PipelineRuns older than 1 day in namespace $NAMESPACE..."
+              oc get pipelineruns -n $NAMESPACE --no-headers -o custom-columns=NAME:.metadata.name,CREATED:.metadata.creationTimestamp | \
+              while read -r name created; do
+                if [[ "$(date -d "$created" +%s)" -lt "$(date -d "1 day ago" +%s)" ]]; then
+                  echo "Deleting PipelineRun: $name"
+                  oc delete pipelinerun "$name" -n $NAMESPACE
+                fi
+              done
+            env:
+            - name: NAMESPACE
+              valueFrom:
+                fieldRef:
+                  fieldPath: metadata.namespace
+            volumeMounts:
+            - name: kubeconfig
+              mountPath: /kubeconfig
+              subPath: kubeconfig
+          restartPolicy: OnFailure
+          volumes:
+          - name: kubeconfig
+            secret:
+              secretName: kubeconfig-secret

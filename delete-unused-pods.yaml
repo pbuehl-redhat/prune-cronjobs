@@ -1,0 +1,35 @@
+apiVersion: batch/v1
+kind: CronJob
+metadata:
+  name: delete-unused-pipelineruns
+spec:
+  schedule: "0 0 * * *" # Runs daily at midnight
+  successfulJobsHistoryLimit: 3
+  failedJobsHistoryLimit: 3
+  jobTemplate:
+    spec:
+      template:
+        spec:
+          containers:
+          - name: delete-unused-pipelineruns
+            image: quay.io/openshift/origin-cli:4.1
+            command:
+            - /bin/bash
+            - -c
+            - |
+              oc get pods -n $NAMESPACE --field-selector=status.phase=Succeeded -o name | xargs oc delete
+              oc get pods -n $NAMESPACE --field-selector=status.phase=Failed -o name | xargs oc delete
+            env:
+            - name: NAMESPACE
+              valueFrom:
+                fieldRef:
+                  fieldPath: metadata.namespace
+            volumeMounts:
+            - name: kubeconfig
+              mountPath: /kubeconfig
+              subPath: kubeconfig
+          restartPolicy: OnFailure
+          volumes:
+          - name: kubeconfig
+            secret:
+              secretName: kubeconfig-secret
